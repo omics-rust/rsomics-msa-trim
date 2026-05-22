@@ -1,7 +1,43 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 fn ours() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_BIN_EXE_rsomics-msa-trim"))
+}
+
+fn trimal_available() -> bool {
+    Command::new("trimal")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok()
+}
+
+// Column trimming by gap threshold must match `trimal -gt` (the named upstream):
+// ours -g 0.5 removes columns with >50% gaps, == trimal -gt 0.5.
+#[test]
+fn matches_trimal() {
+    if !trimal_available() {
+        eprintln!("skipping: trimal not found");
+        return;
+    }
+    let ours_out = Command::new(ours())
+        .arg(fixture())
+        .args(["-g", "0.5"])
+        .output()
+        .unwrap();
+    let trimal_out = Command::new("trimal")
+        .arg("-in")
+        .arg(fixture())
+        .args(["-gt", "0.5"])
+        .output()
+        .unwrap();
+    assert!(trimal_out.status.success());
+    let mut a = parse_seqs(&String::from_utf8_lossy(&ours_out.stdout));
+    let mut b = parse_seqs(&String::from_utf8_lossy(&trimal_out.stdout));
+    a.sort();
+    b.sort();
+    assert_eq!(a, b, "msa-trim must match trimal -gt 0.5");
 }
 
 fn fixture() -> std::path::PathBuf {
